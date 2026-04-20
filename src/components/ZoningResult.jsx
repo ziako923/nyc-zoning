@@ -2,6 +2,7 @@ import { getZoneInfo } from '../utils/zoningData'
 import DeveloperTake from './DeveloperTake'
 import WalkabilityCard from './WalkabilityCard'
 import UnderwritingCalculator from './UnderwritingCalculator'
+import SiteMap from './SiteMap'
 import { generateUseCaseAnalysis } from '../utils/investmentAnalysis'
 import {
   getBuildingClassDescription,
@@ -95,6 +96,9 @@ export default function ZoningResult({ result }) {
           {p.policeprct && <IdItem label="Precinct" value={p.policeprct} />}
         </div>
       </div>
+
+      {/* ── Site Map ── */}
+      <SiteMap lat={lat} lng={lng} address={geo.label || geo.name} />
 
       {/* ── Investment signals ── */}
       {(isLandmark || isHistoric || hasAirRights || isVacant || hasOverlay || hasSpecialDist) && (
