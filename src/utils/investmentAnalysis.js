@@ -27,19 +27,14 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
   const RETAIL_PSF  = Math.round(380  * mult)
   const HOTEL_KEY   = Math.round(370000 * mult)
 
-  // Full redevelopment potential (as-of-right if built from scratch)
+  // Always show full new building potential (maxFAR × lot area), ignoring existing structure
   const fullResi = maxResiFar > 0 ? Math.round(maxResiFar * lotArea) : 0
   const fullComm = maxCommFar > 0 ? Math.round(maxCommFar * lotArea) : 0
 
-  // Remaining air rights (what can be added without demolition)
-  const airRightsResi = maxResiFar > 0 ? Math.max(0, Math.round((maxResiFar - builtFar) * lotArea)) : 0
-  const airRightsComm = maxCommFar > 0 ? Math.max(0, Math.round((maxCommFar - builtFar) * lotArea)) : 0
-
-  // Label helper: tell the user whether these are air rights or full redevelopment numbers
-  const resiLabel = airRightsResi > 500 ? `${(airRightsResi/1000).toFixed(1)}K sq ft air rights` : `${(fullResi/1000).toFixed(1)}K sq ft (full redevelop)`
-  const commLabel = airRightsComm > 500 ? `${(airRightsComm/1000).toFixed(1)}K sq ft air rights` : `${(fullComm/1000).toFixed(1)}K sq ft (full redevelop)`
-  const resiBuildable = airRightsResi > 500 ? airRightsResi : fullResi
-  const commBuildable = airRightsComm > 500 ? airRightsComm : fullComm
+  const resiBuildable = fullResi
+  const commBuildable = fullComm
+  const resiLabel = `${(fullResi / 1000).toFixed(1)}K sq ft`
+  const commLabel = `${(fullComm / 1000).toFixed(1)}K sq ft`
 
   const uses = []
 
@@ -399,6 +394,7 @@ export function runUnderwriting({
   landPrice,
   hardCostPSF,
   softCostPct,    // % of hard cost
+  demolitionCost, // $ flat
   // rental inputs
   rentPerUnit,    // $/unit/month
   vacancyPct,
@@ -409,9 +405,10 @@ export function runUnderwriting({
   salePSF,
   brokerPct,      // % of gross (transfer tax + broker)
 }) {
-  const hardCost = hardCostPSF * buildableSqft
-  const softCost = hardCost * (softCostPct / 100)
-  const tdc      = landPrice + hardCost + softCost
+  const hardCost  = hardCostPSF * buildableSqft
+  const softCost  = hardCost * (softCostPct / 100)
+  const demoCost  = demolitionCost || 0
+  const tdc       = landPrice + hardCost + softCost + demoCost
   if (tdc <= 0 || buildableSqft <= 0) return null
 
   if (mode === 'rental') {
@@ -430,10 +427,10 @@ export function runUnderwriting({
     const em  = totalReturn / tdc
 
     // Residual Land Value at target 6% yield on cost
-    const rlv    = noi / 0.06 - (hardCost + softCost)
+    const rlv    = noi / 0.06 - (hardCost + softCost + demoCost)
     const rlvPSF = buildableSqft > 0 ? rlv / buildableSqft : 0
 
-    return { mode, tdc, hardCost, softCost, landPrice, grossRent, egi, noi,
+    return { mode, tdc, hardCost, softCost, demoCost, landPrice, grossRent, egi, noi,
              yieldOnCost, exitValue, irr, em, rlv, rlvPSF, totalReturn }
   } else {
     const grossRevenue  = salePSF * buildableSqft
@@ -448,10 +445,10 @@ export function runUnderwriting({
     const em  = netRevenue / tdc
 
     // RLV at 15% profit-on-cost target
-    const rlv    = netRevenue / 1.15 - (hardCost + softCost)
+    const rlv    = netRevenue / 1.15 - (hardCost + softCost + demoCost)
     const rlvPSF = buildableSqft > 0 ? rlv / buildableSqft : 0
 
-    return { mode, tdc, hardCost, softCost, landPrice, grossRevenue, netRevenue,
+    return { mode, tdc, hardCost, softCost, demoCost, landPrice, grossRevenue, netRevenue,
              profit, profitOnCost, profitMargin, irr, em, rlv, rlvPSF }
   }
 }

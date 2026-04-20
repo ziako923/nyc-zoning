@@ -71,6 +71,7 @@ export default function UnderwritingCalculator({ pluto, useCases }) {
   const [landPrice, setLandPrice]   = useState(Math.round((Number(p.assessland) || 0) * 3) || 2000000)
   const [hardCostPSF, setHardCost]  = useState(Math.round(340 * mult))
   const [softCostPct, setSoftCost]  = useState(18)
+  const [demolitionCost, setDemo]   = useState(0)
 
   // Rental inputs
   const [rentPerUnit, setRent]      = useState(Math.round(2800 * mult))
@@ -84,10 +85,10 @@ export default function UnderwritingCalculator({ pluto, useCases }) {
   const [brokerPct, setBroker]      = useState(6)
 
   const result = useMemo(() => runUnderwriting({
-    mode, buildableSqft, units, landPrice, hardCostPSF, softCostPct,
+    mode, buildableSqft, units, landPrice, hardCostPSF, softCostPct, demolitionCost,
     rentPerUnit, vacancyPct, expensePct, holdYears, exitCapRate,
     salePSF, brokerPct,
-  }), [mode, buildableSqft, units, landPrice, hardCostPSF, softCostPct,
+  }), [mode, buildableSqft, units, landPrice, hardCostPSF, softCostPct, demolitionCost,
        rentPerUnit, vacancyPct, expensePct, holdYears, exitCapRate, salePSF, brokerPct])
 
   const irrPct   = result?.irr != null ? result.irr * 100 : null
@@ -165,12 +166,20 @@ export default function UnderwritingCalculator({ pluto, useCases }) {
                 step={0.5}
                 hint={`Total: ${fmtC((hardCostPSF * buildableSqft) * softCostPct / 100)}`}
               />
+              <NumInput
+                label="Demolition / Removal"
+                value={demolitionCost}
+                onChange={setDemo}
+                step={10000}
+                hint="Leave 0 if vacant lot"
+              />
             </div>
             {result && (
               <div className="mt-2 bg-gray-50 rounded-lg px-4 py-2.5 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
                 <span>Land: <strong>{fmtC(result.landPrice)}</strong></span>
                 <span>Hard: <strong>{fmtC(result.hardCost)}</strong></span>
                 <span>Soft: <strong>{fmtC(result.softCost)}</strong></span>
+                {result.demoCost > 0 && <span>Demo: <strong>{fmtC(result.demoCost)}</strong></span>}
                 <span className="font-bold text-gray-800">TDC: {fmtC(result.tdc)}</span>
                 <span className="text-gray-400">${fmt(Math.round(result.tdc / buildableSqft))}/sqft all-in</span>
               </div>
