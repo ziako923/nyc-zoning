@@ -1,5 +1,146 @@
 // Rule-based investment analysis engine using PLUTO + zoning data
 
+// ── Use-case breakdown ──────────────────────────────────────────────────────
+
+export function generateUseCaseAnalysis({ pluto: p, geo }) {
+  if (!p) return null
+
+  const lotArea     = Number(p.lotarea)  || 0
+  const builtFar    = Number(p.builtfar) || 0
+  const maxResiFar  = Number(p.residfar) || 0
+  const maxCommFar  = Number(p.commfar)  || 0
+  const isVacant    = p.landuse === '11'
+  const isLandmark  = !!(p.landmark && p.landmark.trim())
+  const isHistoric  = !!(p.histdist  && p.histdist.trim())
+  const isMfg       = (p.zonedist1 || '').toUpperCase().startsWith('M')
+  const borough     = (p.borough || geo?.borough || '').toUpperCase()
+
+  if (lotArea === 0) return null
+
+  // Borough price multipliers (relative to NYC baseline)
+  const mult = { MN: 1.85, BK: 1.15, QN: 0.95, BX: 0.72, SI: 0.65 }[borough] || 1.0
+
+  // Base market rates
+  const CONDO_PSF   = Math.round(1100 * mult)   // condo sellout $/sqft
+  const RENTAL_RENT = Math.round(3000 * mult)   // avg monthly rent/unit
+  const OFFICE_PSF  = Math.round(480  * mult)   // office value $/sqft
+  const RETAIL_PSF  = Math.round(380  * mult)   // retail value $/sqft
+  const HOTEL_KEY   = Math.round(370000 * mult) // implied value per hotel key
+
+  // Buildable sq ft = air rights remaining (or full FAR if vacant)
+  const effectiveBuilt = isVacant ? 0 : builtFar
+  const resiBuildable  = maxResiFar > 0 ? Math.max(0, (maxResiFar - effectiveBuilt) * lotArea) : 0
+  const commBuildable  = maxCommFar > 0 ? Math.max(0, (maxCommFar - effectiveBuilt) * lotArea) : 0
+
+  const uses = []
+
+  // ── Residential Condo ──
+  if (maxResiFar > 0 && resiBuildable > 500 && !isMfg) {
+    const buildable = Math.round(resiBuildable)
+    const units     = Math.max(1, Math.floor(buildable / 850))
+    uses.push({
+      id: 'condo',
+      label: 'Residential Condo',
+      color: 'blue',
+      far: maxResiFar,
+      buildableSqft: buildable,
+      units,
+      unitLabel: 'units',
+      impliedValue: buildable * CONDO_PSF,
+      valueLabel: 'Est. Gross Sellout',
+      assumptions: `~850 sq ft avg unit · $${CONDO_PSF.toLocaleString()}/sq ft`,
+      feasible: buildable >= 3000,
+      warning: isLandmark ? 'Landmark — exterior changes restricted' : isHistoric ? 'Historic district — LPC review required' : null,
+    })
+  }
+
+  // ── Multifamily Rental ──
+  if (maxResiFar > 0 && resiBuildable > 500 && !isMfg) {
+    const buildable    = Math.round(resiBuildable)
+    const units        = Math.max(1, Math.floor(buildable / 750))
+    const annualNOI    = units * RENTAL_RENT * 12 * 0.48 // ~48% NOI margin
+    const impliedValue = Math.round(annualNOI / 0.045)   // 4.5% cap rate
+    uses.push({
+      id: 'rental',
+      label: 'Multifamily Rental',
+      color: 'emerald',
+      far: maxResiFar,
+      buildableSqft: buildable,
+      units,
+      unitLabel: 'units',
+      impliedValue,
+      valueLabel: 'Implied Value (4.5% cap)',
+      assumptions: `~750 sq ft avg · $${RENTAL_RENT.toLocaleString()}/unit/mo · 48% NOI`,
+      feasible: buildable >= 3000,
+      warning: null,
+    })
+  }
+
+  // ── Commercial / Office ──
+  if (maxCommFar > 0 && commBuildable > 500) {
+    const buildable = Math.round(commBuildable)
+    uses.push({
+      id: 'office',
+      label: 'Commercial / Office',
+      color: 'violet',
+      far: maxCommFar,
+      buildableSqft: buildable,
+      units: null,
+      unitLabel: null,
+      impliedValue: buildable * OFFICE_PSF,
+      valueLabel: 'Implied Value',
+      assumptions: `$${OFFICE_PSF.toLocaleString()}/sq ft est. · subject to market vacancy`,
+      feasible: buildable >= 5000,
+      warning: isMfg ? 'Manufacturing zone — residential not permitted' : null,
+    })
+  }
+
+  // ── Hotel ──
+  if (maxCommFar > 0 && commBuildable > 500) {
+    const buildable = Math.round(commBuildable)
+    const keys      = Math.max(1, Math.floor(buildable / 420))
+    uses.push({
+      id: 'hotel',
+      label: 'Hotel',
+      color: 'amber',
+      far: maxCommFar,
+      buildableSqft: buildable,
+      units: keys,
+      unitLabel: 'keys',
+      impliedValue: keys * HOTEL_KEY,
+      valueLabel: 'Implied Value',
+      assumptions: `~420 sq ft/key · $${Math.round(HOTEL_KEY / 1000)}K/key est.`,
+      feasible: buildable >= 8000 && keys >= 20,
+      warning: null,
+    })
+  }
+
+  // ── Mixed-Use ──
+  if (maxResiFar > 0 && maxCommFar > 0 && !isMfg) {
+    const buildable  = Math.round(Math.max(resiBuildable, commBuildable))
+    const resiSqft   = Math.round(buildable * 0.80)
+    const commSqft   = Math.round(buildable * 0.20)
+    const units      = Math.max(1, Math.floor(resiSqft / 800))
+    const impliedVal = resiSqft * CONDO_PSF + commSqft * RETAIL_PSF
+    uses.push({
+      id: 'mixed',
+      label: 'Mixed-Use',
+      color: 'indigo',
+      far: Math.max(maxResiFar, maxCommFar),
+      buildableSqft: buildable,
+      units,
+      unitLabel: 'resi units',
+      impliedValue: impliedVal,
+      valueLabel: 'Blended Implied Value',
+      assumptions: `80% resi (${resiSqft.toLocaleString()} sq ft) · 20% retail (${commSqft.toLocaleString()} sq ft)`,
+      feasible: buildable >= 5000,
+      warning: null,
+    })
+  }
+
+  return uses.length > 0 ? uses : null
+}
+
 export function analyzeParcel({ pluto: p, geo, district }) {
   if (!p) return null
 

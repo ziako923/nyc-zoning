@@ -1,4 +1,4 @@
-import { analyzeParcel } from '../utils/investmentAnalysis'
+import { analyzeParcel, generateUseCaseAnalysis } from '../utils/investmentAnalysis'
 
 const COLOR = {
   emerald: {
@@ -46,6 +46,14 @@ const FLAG_STYLES = {
   },
 }
 
+const USE_COLOR = {
+  blue:    { header: 'bg-blue-600',   light: 'bg-blue-50 border-blue-200',   text: 'text-blue-700',   badge: 'bg-blue-100 text-blue-800' },
+  emerald: { header: 'bg-emerald-600',light: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
+  violet:  { header: 'bg-violet-600', light: 'bg-violet-50 border-violet-200', text: 'text-violet-700',  badge: 'bg-violet-100 text-violet-800' },
+  amber:   { header: 'bg-amber-500',  light: 'bg-amber-50 border-amber-200',  text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-800' },
+  indigo:  { header: 'bg-indigo-600', light: 'bg-indigo-50 border-indigo-200', text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-800' },
+}
+
 export default function DeveloperTake({ pluto, zoning, geo }) {
   const district =
     pluto?.zonedist1 ||
@@ -55,6 +63,8 @@ export default function DeveloperTake({ pluto, zoning, geo }) {
 
   const analysis = analyzeParcel({ pluto, geo, district })
   if (!analysis) return null
+
+  const useCases = generateUseCaseAnalysis({ pluto, geo })
 
   const c = COLOR[analysis.verdictColor]
 
@@ -108,6 +118,59 @@ export default function DeveloperTake({ pluto, zoning, geo }) {
         </div>
       )}
 
+      {/* ── Use-Case Breakdown ── */}
+      {useCases && useCases.length > 0 && (
+        <div className="border-t border-black/5 bg-white/60 px-5 pt-5 pb-5">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Development Scenarios</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {useCases.map((use) => {
+              const uc = USE_COLOR[use.color] || USE_COLOR.blue
+              return (
+                <div key={use.id} className={`rounded-xl border overflow-hidden ${uc.light} ${!use.feasible ? 'opacity-60' : ''}`}>
+                  {/* Card header */}
+                  <div className={`${uc.header} px-4 py-2 flex items-center justify-between`}>
+                    <span className="text-xs font-bold text-white tracking-wide">{use.label}</span>
+                    {!use.feasible && (
+                      <span className="text-[10px] bg-white/20 text-white rounded px-1.5 py-0.5">Limited scale</span>
+                    )}
+                  </div>
+
+                  {/* Metrics */}
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Metric label="Max FAR" value={use.far.toFixed(2)} color={uc.text} />
+                      <Metric label="New Buildable" value={`${(use.buildableSqft / 1000).toFixed(1)}K sq ft`} color={uc.text} />
+                      {use.units !== null && (
+                        <Metric label={use.unitLabel === 'keys' ? 'Hotel Keys' : use.unitLabel === 'resi units' ? 'Resi Units' : 'Units'} value={use.units.toLocaleString()} color={uc.text} />
+                      )}
+                      <Metric
+                        label={use.valueLabel}
+                        value={formatM(use.impliedValue)}
+                        color={uc.text}
+                        highlight
+                      />
+                    </div>
+
+                    <p className="text-[11px] text-gray-400 leading-snug pt-1 border-t border-black/5">
+                      {use.assumptions}
+                    </p>
+
+                    {use.warning && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-200">
+                        ⚠ {use.warning}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-3">
+            Scenarios use MapPLUTO FAR limits and NYC market-rate estimates. Assumes air rights are the developable basis. Not a substitute for a formal feasibility study.
+          </p>
+        </div>
+      )}
+
       <div className="px-5 py-2.5 border-t border-black/5 bg-black/5">
         <p className="text-xs text-gray-400">
           Analysis is rule-based using MapPLUTO data. Not a substitute for professional underwriting or legal advice.
@@ -115,4 +178,21 @@ export default function DeveloperTake({ pluto, zoning, geo }) {
       </div>
     </div>
   )
+}
+
+function Metric({ label, value, color, highlight }) {
+  return (
+    <div className={`rounded-lg px-2.5 py-1.5 ${highlight ? 'bg-white/70 border border-black/5' : ''}`}>
+      <p className="text-[10px] text-gray-400 mb-0.5">{label}</p>
+      <p className={`text-sm font-bold ${color}`}>{value}</p>
+    </div>
+  )
+}
+
+function formatM(n) {
+  if (!n || isNaN(n)) return '—'
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`
+  if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)         return `$${(n / 1_000).toFixed(0)}K`
+  return `$${n.toFixed(0)}`
 }
