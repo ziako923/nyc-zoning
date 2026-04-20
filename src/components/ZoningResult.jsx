@@ -1,6 +1,8 @@
 import { getZoneInfo } from '../utils/zoningData'
 import DeveloperTake from './DeveloperTake'
 import WalkabilityCard from './WalkabilityCard'
+import UnderwritingCalculator from './UnderwritingCalculator'
+import { generateUseCaseAnalysis } from '../utils/investmentAnalysis'
 import {
   getBuildingClassDescription,
   getLandUseDescription,
@@ -329,6 +331,14 @@ export default function ZoningResult({ result }) {
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-500">
           PLUTO parcel data was not found for this address. Assessment, FAR, and ownership data require a valid BBL.
         </div>
+      )}
+
+      {/* Underwriting Calculator */}
+      {pluto && (
+        <UnderwritingCalculator
+          pluto={pluto}
+          useCases={generateUseCaseAnalysis({ pluto, geo })}
+        />
       )}
 
       {/* Raw data toggle */}

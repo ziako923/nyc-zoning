@@ -376,3 +376,82 @@ function landUseLabel(code) {
   }
   return map[String(code).padStart(2, '0')] || 'mixed-use'
 }
+
+// ── Underwriting engine ─────────────────────────────────────────────────────
+
+// Bisection IRR — robust for real estate cash flow shapes
+export function calculateIRR(cashFlows) {
+  let lo = -0.9999, hi = 100.0
+  const npv = (r) => cashFlows.reduce((s, cf, t) => s + cf / Math.pow(1 + r, t), 0)
+  if (npv(lo) * npv(hi) > 0) return null // no solution
+  for (let i = 0; i < 300; i++) {
+    const mid = (lo + hi) / 2
+    if (Math.abs(hi - lo) < 1e-8) return mid
+    npv(mid) * npv(lo) <= 0 ? (hi = mid) : (lo = mid)
+  }
+  return (lo + hi) / 2
+}
+
+export function runUnderwriting({
+  mode,           // 'rental' | 'sale'
+  buildableSqft,
+  units,
+  landPrice,
+  hardCostPSF,
+  softCostPct,    // % of hard cost
+  // rental inputs
+  rentPerUnit,    // $/unit/month
+  vacancyPct,
+  expensePct,
+  holdYears,
+  exitCapRate,    // %
+  // sale inputs
+  salePSF,
+  brokerPct,      // % of gross (transfer tax + broker)
+}) {
+  const hardCost = hardCostPSF * buildableSqft
+  const softCost = hardCost * (softCostPct / 100)
+  const tdc      = landPrice + hardCost + softCost
+  if (tdc <= 0 || buildableSqft <= 0) return null
+
+  if (mode === 'rental') {
+    const grossRent   = rentPerUnit * units * 12
+    const egi         = grossRent * (1 - vacancyPct / 100)
+    const noi         = egi * (1 - expensePct / 100)
+    const yieldOnCost = tdc > 0 ? noi / tdc : 0
+    const exitValue   = noi / (exitCapRate / 100)
+    const totalReturn = noi * holdYears + exitValue
+
+    // Annual cash flows: year 0 = -TDC, years 1..hold = NOI, last year += exit
+    const cfs = [-tdc, ...Array.from({ length: holdYears }, (_, i) =>
+      noi + (i === holdYears - 1 ? exitValue : 0)
+    )]
+    const irr = calculateIRR(cfs)
+    const em  = totalReturn / tdc
+
+    // Residual Land Value at target 6% yield on cost
+    const rlv    = noi / 0.06 - (hardCost + softCost)
+    const rlvPSF = buildableSqft > 0 ? rlv / buildableSqft : 0
+
+    return { mode, tdc, hardCost, softCost, landPrice, grossRent, egi, noi,
+             yieldOnCost, exitValue, irr, em, rlv, rlvPSF, totalReturn }
+  } else {
+    const grossRevenue  = salePSF * buildableSqft
+    const netRevenue    = grossRevenue * (1 - brokerPct / 100)
+    const profit        = netRevenue - tdc
+    const profitOnCost  = tdc > 0 ? profit / tdc : 0
+    const profitMargin  = netRevenue > 0 ? profit / netRevenue : 0
+
+    // Cash flows: year 0 = -TDC, year 1 = 30% proceeds, year 2 = 70% proceeds
+    const cfs = [-tdc, netRevenue * 0.30, netRevenue * 0.70]
+    const irr = calculateIRR(cfs)
+    const em  = netRevenue / tdc
+
+    // RLV at 15% profit-on-cost target
+    const rlv    = netRevenue / 1.15 - (hardCost + softCost)
+    const rlvPSF = buildableSqft > 0 ? rlv / buildableSqft : 0
+
+    return { mode, tdc, hardCost, softCost, landPrice, grossRevenue, netRevenue,
+             profit, profitOnCost, profitMargin, irr, em, rlv, rlvPSF }
+  }
+}
