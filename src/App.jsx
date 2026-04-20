@@ -80,7 +80,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-tight">NYC Zoning Lookup</h1>
-            <p className="text-sm text-gray-500">Address search · zoning · development potential · parcel data</p>
+            <p className="text-sm text-gray-500">Address search · zoning · development potential · underwriting · parcel data</p>
           </div>
         </div>
 
