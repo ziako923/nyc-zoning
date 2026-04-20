@@ -15,28 +15,37 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
   const isMfg       = (p.zonedist1 || '').toUpperCase().startsWith('M')
   const borough     = (p.borough || geo?.borough || '').toUpperCase()
 
-  if (lotArea === 0) return null
+  if (lotArea === 0 || (maxResiFar === 0 && maxCommFar === 0)) return null
 
   // Borough price multipliers (relative to NYC baseline)
   const mult = { MN: 1.85, BK: 1.15, QN: 0.95, BX: 0.72, SI: 0.65 }[borough] || 1.0
 
   // Base market rates
-  const CONDO_PSF   = Math.round(1100 * mult)   // condo sellout $/sqft
-  const RENTAL_RENT = Math.round(3000 * mult)   // avg monthly rent/unit
-  const OFFICE_PSF  = Math.round(480  * mult)   // office value $/sqft
-  const RETAIL_PSF  = Math.round(380  * mult)   // retail value $/sqft
-  const HOTEL_KEY   = Math.round(370000 * mult) // implied value per hotel key
+  const CONDO_PSF   = Math.round(1100 * mult)
+  const RENTAL_RENT = Math.round(3000 * mult)
+  const OFFICE_PSF  = Math.round(480  * mult)
+  const RETAIL_PSF  = Math.round(380  * mult)
+  const HOTEL_KEY   = Math.round(370000 * mult)
 
-  // Buildable sq ft = air rights remaining (or full FAR if vacant)
-  const effectiveBuilt = isVacant ? 0 : builtFar
-  const resiBuildable  = maxResiFar > 0 ? Math.max(0, (maxResiFar - effectiveBuilt) * lotArea) : 0
-  const commBuildable  = maxCommFar > 0 ? Math.max(0, (maxCommFar - effectiveBuilt) * lotArea) : 0
+  // Full redevelopment potential (as-of-right if built from scratch)
+  const fullResi = maxResiFar > 0 ? Math.round(maxResiFar * lotArea) : 0
+  const fullComm = maxCommFar > 0 ? Math.round(maxCommFar * lotArea) : 0
+
+  // Remaining air rights (what can be added without demolition)
+  const airRightsResi = maxResiFar > 0 ? Math.max(0, Math.round((maxResiFar - builtFar) * lotArea)) : 0
+  const airRightsComm = maxCommFar > 0 ? Math.max(0, Math.round((maxCommFar - builtFar) * lotArea)) : 0
+
+  // Label helper: tell the user whether these are air rights or full redevelopment numbers
+  const resiLabel = airRightsResi > 500 ? `${(airRightsResi/1000).toFixed(1)}K sq ft air rights` : `${(fullResi/1000).toFixed(1)}K sq ft (full redevelop)`
+  const commLabel = airRightsComm > 500 ? `${(airRightsComm/1000).toFixed(1)}K sq ft air rights` : `${(fullComm/1000).toFixed(1)}K sq ft (full redevelop)`
+  const resiBuildable = airRightsResi > 500 ? airRightsResi : fullResi
+  const commBuildable = airRightsComm > 500 ? airRightsComm : fullComm
 
   const uses = []
 
   // ── Residential Condo ──
-  if (maxResiFar > 0 && resiBuildable > 500 && !isMfg) {
-    const buildable = Math.round(resiBuildable)
+  if (maxResiFar > 0 && fullResi > 0 && !isMfg) {
+    const buildable = resiBuildable
     const units     = Math.max(1, Math.floor(buildable / 850))
     uses.push({
       id: 'condo',
@@ -44,6 +53,7 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
       color: 'blue',
       far: maxResiFar,
       buildableSqft: buildable,
+      buildableLabel: resiLabel,
       units,
       unitLabel: 'units',
       impliedValue: buildable * CONDO_PSF,
@@ -55,17 +65,18 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
   }
 
   // ── Multifamily Rental ──
-  if (maxResiFar > 0 && resiBuildable > 500 && !isMfg) {
-    const buildable    = Math.round(resiBuildable)
+  if (maxResiFar > 0 && fullResi > 0 && !isMfg) {
+    const buildable    = resiBuildable
     const units        = Math.max(1, Math.floor(buildable / 750))
-    const annualNOI    = units * RENTAL_RENT * 12 * 0.48 // ~48% NOI margin
-    const impliedValue = Math.round(annualNOI / 0.045)   // 4.5% cap rate
+    const annualNOI    = units * RENTAL_RENT * 12 * 0.48
+    const impliedValue = Math.round(annualNOI / 0.045)
     uses.push({
       id: 'rental',
       label: 'Multifamily Rental',
       color: 'emerald',
       far: maxResiFar,
       buildableSqft: buildable,
+      buildableLabel: resiLabel,
       units,
       unitLabel: 'units',
       impliedValue,
@@ -77,14 +88,15 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
   }
 
   // ── Commercial / Office ──
-  if (maxCommFar > 0 && commBuildable > 500) {
-    const buildable = Math.round(commBuildable)
+  if (maxCommFar > 0 && fullComm > 0) {
+    const buildable = commBuildable
     uses.push({
       id: 'office',
       label: 'Commercial / Office',
       color: 'violet',
       far: maxCommFar,
       buildableSqft: buildable,
+      buildableLabel: commLabel,
       units: null,
       unitLabel: null,
       impliedValue: buildable * OFFICE_PSF,
@@ -96,8 +108,8 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
   }
 
   // ── Hotel ──
-  if (maxCommFar > 0 && commBuildable > 500) {
-    const buildable = Math.round(commBuildable)
+  if (maxCommFar > 0 && fullComm > 0) {
+    const buildable = commBuildable
     const keys      = Math.max(1, Math.floor(buildable / 420))
     uses.push({
       id: 'hotel',
@@ -105,6 +117,7 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
       color: 'amber',
       far: maxCommFar,
       buildableSqft: buildable,
+      buildableLabel: commLabel,
       units: keys,
       unitLabel: 'keys',
       impliedValue: keys * HOTEL_KEY,
@@ -117,20 +130,20 @@ export function generateUseCaseAnalysis({ pluto: p, geo }) {
 
   // ── Mixed-Use ──
   if (maxResiFar > 0 && maxCommFar > 0 && !isMfg) {
-    const buildable  = Math.round(Math.max(resiBuildable, commBuildable))
-    const resiSqft   = Math.round(buildable * 0.80)
-    const commSqft   = Math.round(buildable * 0.20)
-    const units      = Math.max(1, Math.floor(resiSqft / 800))
-    const impliedVal = resiSqft * CONDO_PSF + commSqft * RETAIL_PSF
+    const buildable = Math.max(resiBuildable, commBuildable)
+    const resiSqft  = Math.round(buildable * 0.80)
+    const commSqft  = Math.round(buildable * 0.20)
+    const units     = Math.max(1, Math.floor(resiSqft / 800))
     uses.push({
       id: 'mixed',
       label: 'Mixed-Use',
       color: 'indigo',
       far: Math.max(maxResiFar, maxCommFar),
       buildableSqft: buildable,
+      buildableLabel: `${(buildable/1000).toFixed(1)}K sq ft total`,
       units,
       unitLabel: 'resi units',
-      impliedValue: impliedVal,
+      impliedValue: resiSqft * CONDO_PSF + commSqft * RETAIL_PSF,
       valueLabel: 'Blended Implied Value',
       assumptions: `80% resi (${resiSqft.toLocaleString()} sq ft) · 20% retail (${commSqft.toLocaleString()} sq ft)`,
       feasible: buildable >= 5000,

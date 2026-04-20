@@ -139,7 +139,7 @@ export default function DeveloperTake({ pluto, zoning, geo }) {
                   <div className="px-4 py-3 space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <Metric label="Max FAR" value={use.far.toFixed(2)} color={uc.text} />
-                      <Metric label="New Buildable" value={`${(use.buildableSqft / 1000).toFixed(1)}K sq ft`} color={uc.text} />
+                      <Metric label="Buildable Area" value={use.buildableLabel} color={uc.text} />
                       {use.units !== null && (
                         <Metric label={use.unitLabel === 'keys' ? 'Hotel Keys' : use.unitLabel === 'resi units' ? 'Resi Units' : 'Units'} value={use.units.toLocaleString()} color={uc.text} />
                       )}
@@ -166,7 +166,7 @@ export default function DeveloperTake({ pluto, zoning, geo }) {
             })}
           </div>
           <p className="text-[11px] text-gray-400 mt-3">
-            Scenarios use MapPLUTO FAR limits and NYC market-rate estimates. Assumes air rights are the developable basis. Not a substitute for a formal feasibility study.
+            "Air rights" = unused FAR on existing building. "Full redevelop" = as-of-right if site were cleared and rebuilt to max FAR. Values use NYC market-rate estimates adjusted by borough. Not a substitute for a formal feasibility study.
           </p>
         </div>
       )}
